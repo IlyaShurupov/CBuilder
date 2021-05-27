@@ -1,0 +1,11 @@
+{
+	"Name" : "Types", 
+	"Type": "StaticLibrary",
+
+	"Dependencies": [], 
+
+    "Definitions": [],
+	"AdditionalLibraries": [],
+	"AdditionalIncludePaths": [],
+	"AdditionalLibraryPaths": []
+}

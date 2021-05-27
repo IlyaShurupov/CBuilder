@@ -1,0 +1,11 @@
+{
+	"Name" : "Executable", 
+	"Type": "exe",
+
+	"Dependencies": ["ModuleA", "ModuleB", "ModuleC"],
+
+    "Definitions": [],
+	"AdditionalLibraries": [],
+	"AdditionalIncludePaths": [],
+	"AdditionalLibraryPaths": []
+}

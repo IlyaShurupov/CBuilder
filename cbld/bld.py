@@ -5,6 +5,14 @@ import json
 import sys
 
 
+class BuildException(Exception):
+    def __init__(self, definition):
+        self.definition = definition
+
+    def __str__(self):
+        return "Build Error: " + self.definition
+
+
 class Cache:
     def __init__(self, path):
         self.init_data = {"LastRun": 0.0, "DefaultArgs": {"dbg": False}}
@@ -231,14 +239,25 @@ class Project:
             if file.modified:
                 self.modified = True
 
-    def get_inherited_props(self, attribute):
+    def clear_child_flags(self):
+        for dep in self.dependencies:
+            dep.clear_child_flags()
+            dep.flag = 0
+
+    def inherit_not_repeated(self, attribute):
         props = []
         props += getattr(self, attribute)
 
         for dep in self.dependencies:
-            props += dep.get_inherited_props(attribute)
+            if dep.flag == 0:
+                props += dep.inherit_not_repeated(attribute)
+                dep.flag = 1
 
         return props
+
+    def get_inherited_props(self, attribute):
+        self.clear_child_flags()
+        return self.inherit_not_repeated(attribute)
 
     def get_prnts(self, projs):
         prnts = []
@@ -305,8 +324,10 @@ def bld(cmd_args):
                             project.dependencies[dep_idx] = may_be_dep
                             found = 1
                             break
-
-        # throw if not found
+                    if not found:
+                        error = " project \"" + project.name + "\" - Dependency \""\
+                                + project.dependencies[dep_idx] + "\" not found"
+                        raise BuildException(error)
 
         projs = []
 
@@ -340,4 +361,8 @@ if sys.argv[1] == "help":
 
 else:
     args = ConsoleArgs(sys.argv)
-    bld(args)
+
+    try:
+        bld(args)
+    except BuildException as bld_error:
+        print(bld_error)

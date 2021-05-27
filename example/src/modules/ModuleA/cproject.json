@@ -1,0 +1,11 @@
+{
+	"Name" : "ModuleA", 
+	"Type": "StaticLibrary",
+
+	"Dependencies": ["Types"], 
+
+    "Definitions": [],
+	"AdditionalLibraries": [],
+	"AdditionalIncludePaths": [],
+	"AdditionalLibraryPaths": []
+}
