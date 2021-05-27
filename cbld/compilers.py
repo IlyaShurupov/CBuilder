@@ -87,7 +87,7 @@ class Gcc:
 
 	def compile(self, cmpl):
 
-		print("\n ---- Building using Gcc ---- \n")
+		print(" ---- Building using Gcc ---- ")
 
 		print("Generating objects: ")
 		self.compile_ojs(cmpl)
@@ -98,8 +98,7 @@ class Gcc:
 		print("Linking binaries: ")
 		self.link_libs(cmpl)
 
-		print("\n ---- Build succeeded ---- \n")
-
+		print("")
 
 class Msvc:
 	def __init__(self):

@@ -2,6 +2,28 @@
 from common import *
 
 
+def get_queue(projs):
+	import operator
+
+	def update_levels(proj):
+		for dep in proj.dependencies:
+			if dep.flag <= proj.flag:
+				dep.flag = proj.flag + 1
+				update_levels(dep)
+
+	queue = []
+
+	for proj in projs:
+		proj.flag = 0
+
+	for proj in projs:
+		update_levels(proj)
+		queue.append(proj)
+
+	queue.sort(key=operator.attrgetter('flag'))
+	return queue
+
+
 class CompilationBlock:
 	def __init__(self, proj, files=False):
 		self.project_name = proj.name
@@ -60,27 +82,6 @@ class CompileInstructions:
 		self.args = csl_args
 
 	def generate(self, projects, cache_data):
-
-		def get_queue(projs):
-			import operator
-
-			def update_levels(proj):
-				for dep in proj.dependencies:
-					if dep.flag <= proj.flag:
-						dep.flag = proj.flag + 1
-						update_levels(dep)
-
-			queue = []
-
-			for proj in projs:
-				proj.flag = 0
-
-			for proj in projs:
-				update_levels(proj)
-				queue.append(proj)
-
-			queue.sort(key=operator.attrgetter('flag'))
-			return queue
 
 		def get_rebuild_queue(queue):
 			rebuild_projs = []

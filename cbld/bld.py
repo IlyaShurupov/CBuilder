@@ -142,25 +142,7 @@ class Project:
         self.flag = 0
         self.flag1 = 0
         self.modified = False
-
-        self.initialize()
-
-    def initialize(self):
-        # defaults
-        self.name = self.path.dir_name()
-        self.type = "lib"
-        self.files = []
-        self.dependencies = []
-
-        self.definitions = []
-        self.inc_dirs = []
-        self.external_lib = []
-
-        self.external_lib_paths = []
-
-        self.flag = 0
-        self.flag1 = 0
-        self.modified = False
+        self.cproject_script = None
 
     def read_settings(self):
         with open(self.path.add_path("cproject.json").path) as proj_file:
@@ -231,7 +213,6 @@ class Project:
                 file.modified = False
 
     def update(self, cache):
-        self.initialize()
         self.read_settings()
         self.update_files(cache)
 
@@ -290,28 +271,13 @@ class Project:
 
 
 def bld(cmd_args):
-    def apply_inherent_policy(projects):
 
-        def inherent(proj, prnt):
-
-            # inherent from deps
-            if len(proj.dependencies) and not proj.flag:
-                for dep in proj.dependencies:
-                    inherent(dep, proj)
-
-            # append to parent
-            if prnt != 0:
-                prnt.definitions += proj.definitions
-                prnt.inc_dirs += proj.inc_dirs
-                prnt.external_lib += proj.external_lib
-                prnt.external_lib_paths += proj.external_lib_paths
-
-            proj.flag = 1
-
-        for proj in projects:
-            proj.flag = 0
-        for proj in projects:
-            inherent(proj, 0)
+    def link_scripts(projects):
+        for project in projects:
+            if os.path.isfile(project.path.dir().add_path("cproject.py").path):
+                sys.path.append(project.path.dir().path)
+                project.cproject_script = __import__("cproject")
+                sys.path.remove(project.path.dir().path)
 
     def get_projects(proj_files, args, cache):
 
@@ -339,18 +305,40 @@ def bld(cmd_args):
         resolve_dependencies(projs)
         return projs
 
-    # reading cache
+    print(" ---- reading solution file ---- ")
+    solution_files = GetFiles(cmd_args.root, "CBuildConfig.json")
+    if len(solution_files) != 1:
+        raise BuildException(" multiple or no solution files were found - check CBuildConfig.json file")
+
+    print(" ---- reading cache ---- ")
     cache = Cache(args.out.add_path("BldCache.json"))
 
     # reading projects
+    print(" ---- reading projects ---- ")
     projects = get_projects(GetFiles(cmd_args.root, "cproject.json"), cmd_args, cache)
 
     # making compiling config
+    print(" ---- generating compilation instructions ---- ")
     compile_instructions = CompileInstructions()
     compile_instructions.pass_console_args(cmd_args)
     compile_instructions.generate(projects, cache.data)
 
+    link_scripts(projects)
+
+    build_queue = get_queue(projects)
+
+    print(" ---- running prebuild scripts  ---- ")
+    for proj in build_queue:
+        if proj.cproject_script:
+            proj.cproject_script.prebuild(proj, cmd_args, cache)
+
     if perform_compilation(compile_instructions, args.compiler) == 0:
+
+        print(" ---- running postbuild scripts  ---- ")
+        for proj in build_queue:
+            if proj.cproject_script:
+                proj.cproject_script.postbuild(proj, cmd_args, cache)
+
         # update cache if succeeds
         cache.update()
 
