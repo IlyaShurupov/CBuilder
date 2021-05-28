@@ -10,16 +10,20 @@ class Gcc:
 	def __init__(self):
 		self.name = "gcc"
 
+	def paths_to_str(self, paths):
+		out = []
+		for path in paths:
+			out.append(path.path)
+		return out
+
 	def compile_ojs(self, cmpl):
 		cmd = "g++ -c  -m" + cmpl.arch.split("x")[1] + " "
 		cmd += " -g " if cmpl.debug else ""
 
 		for cmpl_block in cmpl.compile:
 
-			print("    " + cmpl_block.project_name + ":")
-
 			definitions = to_str(cmpl_block.definitions, 1, " -D\"", 1, "\"")
-			includes = to_str(cmpl_block.includes, 1, " -I\"", 1, "\"")
+			includes = to_str(self.paths_to_str(cmpl_block.includes), 1, " -I\"", 1, "\"")
 
 			if not os.path.isdir(cmpl_block.out.path):
 				os.makedirs(os.path.abspath(cmpl_block.out.path))
@@ -31,35 +35,29 @@ class Gcc:
 				if os.path.isfile(outfile):
 					os.remove(outfile)
 
-				print("		" + file.name + ".cpp")
+				print("    [" + cmpl_block.project_name + "]  " + file.name + ".cpp")
 
 				os.system(cmd + file.path.path + definitions + includes + " -o" + outfile)
 
 				if not os.path.isfile(outfile):
 					raise ExceptionBuildError
 
-			print("")
-
 	def pack_obj(self, cmpl):
 		cmd = "ar rcs "
 		for pack_block in cmpl.pack:
-			file_paths = []
-			for file in GetFiles(pack_block.from_dir, ".obj"):
-				file_paths.append(file.path)
+
 
 			outfile = pack_block.out.path + ".lib"
 
 			if os.path.isfile(outfile):
 				os.remove(outfile)
 
-			os.system(cmd + outfile + to_str(file_paths, 1, " ", 1, " "))
+			os.system(cmd + outfile + to_str(self.paths_to_str(GetFiles(pack_block.from_dir, ".obj")), 1, " ", 1, " "))
 
 			if not os.path.isfile(outfile):
 				raise ExceptionBuildError
 
 			print("	" + pack_block.out.dir_name() + ".lib")
-
-		print("")
 
 	def link_libs(self, cmpl):
 		cmd = "g++ -static -m" + cmpl.arch.split("x")[1] + " "
@@ -87,7 +85,7 @@ class Gcc:
 
 	def compile(self, cmpl):
 
-		print(" ---- Building using Gcc ---- ")
+		print(" ---- Compiling using Gcc ---- ")
 
 		print("Generating objects: ")
 		self.compile_ojs(cmpl)

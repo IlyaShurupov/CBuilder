@@ -1,1 +1,15 @@
-{"LastRun": 1622155866.671884, "DefaultArgs": {"dbg": false}}
+{
+  "DefaultArgs": {
+    "dbg": false
+  },
+  "Variables": {
+    "Types": {
+      "MEMORY_DEBUG": false,
+      "MEMORY_GUARDS": false,
+      "BUILD_TESTS": true,
+      "SDL2_LIB_PATH": "D:\\tmp",
+      "SDL2_INCLUDE_PATH": "D:\\tmp"
+    }
+  },
+  "LastRun": 1622211679.8205311
+}

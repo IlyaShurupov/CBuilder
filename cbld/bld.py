@@ -13,13 +13,68 @@ class BuildException(Exception):
         return "Build Error: " + self.definition
 
 
+class ConfigException(Exception):
+    def __init__(self, where, definition):
+        self.definition = definition
+        self.where = where
+
+    def __str__(self):
+        return "Configuration Error: in " + self.where + " - " + self.definition
+
+
+class Var:
+    def __init__(self, project, name, value=None):
+        self.type = type(value)
+        self.name = name
+        self.project = project
+        self.value = value
+
+
 class Cache:
-    def __init__(self, path):
-        self.init_data = {"LastRun": 0.0, "DefaultArgs": {"dbg": False}}
+    def __init__(self, path, cmd_args):
+
+        self.init_data = {
+            "DefaultArgs": {
+                "dbg": False
+            },
+            "LastRun": 0.0
+        }
+
         self.data = self.init_data
         self.path = path
+        self.vars = []
 
-        self.read()
+        try:
+            self.read()
+
+        except json.decoder.JSONDecodeError as error:
+            raise ConfigException("cache file", "json syntax error")
+
+        self.init_vars(cmd_args)
+
+    def init_vars(self, cmd_args):
+        if "Variables" in self.data:
+            vars = self.data["Variables"]
+            for proj_name, proj_vars in vars.items():
+                for var_name, value in proj_vars.items():
+                    self.vars.append(Var(proj_name, var_name, value))
+
+    def add_var_template(self, project_name, var_name, type):
+        with open(self.path.path, "w+") as cnfg_file:
+            if "Variables" not in self.data:
+                self.data["Variables"] = {}
+            if project_name not in self.data["Variables"]:
+                self.data["Variables"][project_name] = {}
+
+            self.data["Variables"][project_name][var_name] = ""
+            json.dump(self.data, cnfg_file, indent=2)
+
+    def get_var(self, project, var_name):
+        for var in self.vars:
+            if var.project == project:
+                if var.name == var_name:
+                    return var
+        return None
 
     def read(self):
         if not os.path.isdir(self.path.dir().path):
@@ -32,7 +87,7 @@ class Cache:
             return
 
         cache_file = open(self.path.path, "a")
-        json.dump(self.init_data, cache_file)
+        json.dump(self.init_data, cache_file, indent=2)
         cache_file.close()
 
     def update(self):
@@ -49,7 +104,7 @@ class Cache:
 
         cache_file = open(self.path.path, "w+")
         self.data["LastRun"] = get_time()
-        json.dump(self.data, cache_file)
+        json.dump(self.data, cache_file, indent=2)
         cache_file.close()
 
 
@@ -144,7 +199,15 @@ class Project:
         self.modified = False
         self.cproject_script = None
 
-    def read_settings(self):
+    def read_settings(self, cache):
+
+        def is_var(string):
+            left = string.find("{")
+            right = string.find("}")
+            if left < right:
+                return string.split("{")[1].split("}")[0]
+            return None
+
         with open(self.path.add_path("cproject.json").path) as proj_file:
             proj_data = json.load(proj_file)
 
@@ -156,49 +219,100 @@ class Project:
                 self.dependencies = proj_data["Dependencies"]
             if "OutputDirectory" in proj_data:
                 self.out_path.from_str(proj_data["OutputDirectory"])
-            if "Definitions" in proj_data:
-                self.definitions = proj_data["Definitions"]
-            if "AdditionalIncludePaths" in proj_data:
-                self.inc_dirs = proj_data["AdditionalIncludePaths"]
             if "AdditionalLibraries" in proj_data:
                 self.external_lib = proj_data["AdditionalLibraries"]
+
+            if "Definitions" in proj_data:
+                definitions = proj_data["Definitions"]
+                for definition in definitions:
+
+                    if type(definition) is not str:
+                        where = "\"" + self.name + "\" project's config file"
+                        raise ConfigException(where, "Definitions must be a string")
+
+                    var_name = is_var(definition)
+                    if not var_name:
+                        self.definitions.append(definition)
+                    else:
+                        var = cache.get_var(self.name, var_name)
+                        if not var:
+                            cache.add_var_template(self.name, var_name, "bool")
+                            where = "Cache file \"" + self.name + "\" project's variables"
+                            error = "Variable \"" + var_name + "\" is not defined"
+                            raise ConfigException(where, error)
+
+                        if var.type is not bool:
+                            where = "Cache file variable \"" + var_name + "\" of project \"" + self.name + "\""
+                            error = "Definition variable must be a bool"
+                            raise ConfigException(where, error)
+
+                        if var.value:
+                            self.definitions.append(var.name)
+
+            if "AdditionalIncludePaths" in proj_data:
+                includes = proj_data["AdditionalIncludePaths"]
+                for include_path in includes:
+
+                    if type(include_path) is not str:
+                        where = "\"" + self.name + "\" project's config file"
+                        raise ConfigException(where, "Include dirs must be a string")
+
+                    var_name = is_var(include_path)
+                    if not var_name:
+                        self.inc_dirs.append(Path(include_path))
+                    else:
+                        var = cache.get_var(self.name, var_name)
+                        if not var:
+                            where = "Cache file \"" + self.name + "\" project's variables"
+                            error = "Variable \"" + var_name + "\" is not defined"
+                            cache.add_var_template(self.name, var_name, "str")
+                            raise ConfigException(where, error)
+
+                        if var.type is not str:
+                            where = "Cache file variable \"" + var_name + "\" of project \"" + self.name + "\""
+                            error = "AdditionalIncludePaths variable must be a string"
+                            raise ConfigException(where, error)
+
+                        if not var.value:
+                            where = "Cache file variable \"" + var_name + "\" of project \"" + self.name + "\""
+                            error = "Path is not valid "
+                            raise ConfigException(where, error)
+
+                        self.inc_dirs.append(Path(var.value))
+
             if "AdditionalLibraryPaths" in proj_data:
-                for lib_dir in proj_data["AdditionalLibraryPaths"]:
-                    path = Path()
-                    path.from_str(lib_dir)
-                    self.external_lib_paths.append(path)
+                lib_paths = proj_data["AdditionalLibraryPaths"]
+                for lib_path in lib_paths:
 
-        # decode paths
-        def decode_path(path):
-            right = path.find("}")
-            left = path.find("{")
+                    if type(lib_path) is not str:
+                        where = "\"" + self.name + "\" project's config file"
+                        raise ConfigException(where, "Library dir must be a string")
 
-            if right != -1 and left != -1 and right > left:
+                    var_name = is_var(lib_path)
+                    if not var_name:
+                        self.definitions.append(Path(lib_path))
+                    else:
+                        var = cache.get_var(self.name, var_name)
+                        if not var:
+                            where = "Cache file \"" + self.name + "\" project's variables"
+                            error = "Variable \"" + var_name + "\" is not defined"
+                            cache.add_var_template(self.name, var_name, "str")
+                            raise ConfigException(where, error)
 
-                if len(path.split('}')[1]):
-                    abs_path = Path()
-                    abs_path.from_str(path.split('}')[1])
+                        if var.type is not str:
+                            where = "Cache file variable \"" + var_name + "\" of project \"" + self.name + "\""
+                            error = "AdditionalLibraryPaths variable must be a string"
+                            raise ConfigException(where, error)
 
-                    root = path.find("Root")
-                    out = path.find("Out")
+                        if not var.value:
+                            where = "Cache file variable \"" + var_name + "\" of project \"" + self.name + "\""
+                            error = "Path is not valid "
+                            raise ConfigException(where, error)
 
-                    if right > root > left:
-                        return self.root_path.add(abs_path)
-                    elif left < out < right:
-                        return self.out_path.add(abs_path)
-
-            abs_path = Path()
-            return abs_path.from_str(path)
-
-        for i in range(len(self.inc_dirs)):
-            # self.inc_dirs[i] = decode_path(self.inc_dirs[i])
-            pass
-        for i in range(len(self.external_lib_paths)):
-            # self.external_lib[i] = decode_path(self.external_lib[i])
-            pass
+                        self.external_lib_paths.append(Path(var.value))
 
         self.out_path = self.out_path.add_path(self.name)
-        self.inc_dirs.append(self.path.abs())
+        self.inc_dirs.append(self.path)
 
     def update_files(self, cache):
         file_paths = GetFiles(self.path, ".cpp")
@@ -213,7 +327,7 @@ class Project:
                 file.modified = False
 
     def update(self, cache):
-        self.read_settings()
+        self.read_settings(cache)
         self.update_files(cache)
 
         for file in self.files:
@@ -291,9 +405,8 @@ def bld(cmd_args):
                             found = 1
                             break
                     if not found:
-                        error = " project \"" + project.name + "\" - Dependency \""\
-                                + project.dependencies[dep_idx] + "\" not found"
-                        raise BuildException(error)
+                        where = " project \"" + project.name + "\" "
+                        raise ConfigException(where, "Dependency \"" + project.dependencies[dep_idx] + "\" not found")
 
         projs = []
 
@@ -311,7 +424,7 @@ def bld(cmd_args):
         raise BuildException(" multiple or no solution files were found - check CBuildConfig.json file")
 
     print(" ---- reading cache ---- ")
-    cache = Cache(args.out.add_path("BldCache.json"))
+    cache = Cache(args.out.add_path("BldCache.json"), cmd_args)
 
     # reading projects
     print(" ---- reading projects ---- ")
@@ -352,5 +465,5 @@ else:
 
     try:
         bld(args)
-    except BuildException as bld_error:
+    except (BuildException, ConfigException) as bld_error:
         print(bld_error)

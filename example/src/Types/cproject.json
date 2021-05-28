@@ -2,10 +2,10 @@
 	"Name" : "Types", 
 	"Type": "StaticLibrary",
 
-	"Dependencies": [], 
+	"Dependencies": [],
 
-    "Definitions": [],
+    "Definitions": ["{BUILD_TESTS}", "{MEMORY_DEBUG}", "{MEMORY_GUARDS}"],
 	"AdditionalLibraries": [],
-	"AdditionalIncludePaths": [],
-	"AdditionalLibraryPaths": []
+	"AdditionalLibraryPaths": ["{SDL2_LIB_PATH}"],
+	"AdditionalIncludePaths": ["{SDL2_INCLUDE_PATH}"]
 }

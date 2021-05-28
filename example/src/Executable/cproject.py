@@ -1,8 +1,8 @@
 
 
 def prebuild(project, cmd_args, cache):
-    print("     running prebuild script")
+    pass
 
 
 def postbuild(project, cmd_args, cache):
-    print("     running postbuild script")
+    pass
