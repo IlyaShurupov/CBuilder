@@ -13,6 +13,14 @@ def GetFiles(dir, extention):
 	return file_paths
 
 
+class File:
+	def __init__(self, path):
+		self.modified = True
+		self.name = path.file_name()
+		self.path = path
+		self.type = path.type()
+
+
 def to_str(elements_list, before=False, separator=' ', after=False, after_sep=' '):
 	string = ''
 	for item in elements_list:
@@ -43,7 +51,7 @@ class Path:
 		if self.prnt:
 			pass
 		path += self.path
-		return path
+		return os.path.abspath(path)
 
 	def rel(self, path):
 		pass

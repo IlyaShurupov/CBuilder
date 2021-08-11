@@ -1,49 +1,40 @@
 
 from common import *
-
-
-def get_queue(projs):
-	import operator
-
-	def update_levels(proj):
-		for dep in proj.dependencies:
-			if dep.flag <= proj.flag:
-				dep.flag = proj.flag + 1
-				update_levels(dep)
-
-	queue = []
-
-	for proj in projs:
-		proj.flag = 0
-
-	for proj in projs:
-		update_levels(proj)
-		queue.append(proj)
-
-	queue.sort(key=operator.attrgetter('flag'))
-	return queue
-
+from cproject import *
 
 class CompilationBlock:
 	def __init__(self, proj, files=False):
 		self.project_name = proj.name
-		self.out = proj.out_path.add_path("obj")
+		self.out = proj.intermediate_path
 		self.includes = proj.get_inherited_props("inc_dirs")
 		self.definitions = proj.get_inherited_props("definitions")
 		self.source_files = []
+		self.obj_files = []
 
 		if files:
-			for file in proj.get_src_files():
+			for file in proj.get_files("cpp"):
 				if file.modified:
 					self.source_files.append(file)
 		else:
-			self.source_files = proj.get_src_files()
+			self.source_files = proj.get_files("cpp")
+
+		obj_file_names = []
+		for file in proj.get_files("cpp"):
+			obj_file_names.append(file.name + ".obj")
+
+		for file_name in obj_file_names:
+			self.obj_files.append(Path(proj.intermediate_path.add_path(file_name).path))
 
 
 class PackingBlock:
 	def __init__(self, proj):
-		self.out = proj.out_path.add_path(proj.name)
-		self.from_dir = proj.out_path.add_path("obj")
+		self.project_name = proj.name
+		self.out = proj.out_path
+		self.header_files = proj.get_files("h")
+		self.lib_files = []
+
+		for proj in proj.get_build_queue():
+			self.lib_files.append(proj.intermediate_path.add_path(proj.name + ".a"))
 
 
 class LinkingBlock:
@@ -55,7 +46,7 @@ class LinkingBlock:
 
 		queue = proj.get_build_queue()
 		for proj in queue:
-			self.lib_dirs.append(proj.out_path)
+			self.lib_dirs.append(proj.intermediate_path)
 			self.lib_dirs += proj.external_lib_paths
 
 			self.libs.append(proj.name)
@@ -65,20 +56,15 @@ class LinkingBlock:
 class CompileInstructions:
 	def __init__(self):
 		self.arch = "x64"
-		self.platform = "win"
-		self.threading = False
 		self.debug = False
-
+		self.args = None
 		self.compile = []
 		self.pack = []
 		self.link = []
 
 	def pass_console_args(self, csl_args):
 		self.arch = csl_args.arch
-		self.platform = csl_args.platform
-		self.threading = csl_args.threading
 		self.debug = csl_args.debug
-
 		self.args = csl_args
 
 	def generate(self, projects, cache_data):
@@ -111,7 +97,8 @@ class CompileInstructions:
 
 		def pump_pack_blocks(reb_queue):
 			for proj in reb_queue:
-				self.pack.append(PackingBlock(proj))
+				if proj.type == "StaticLibrary":
+					self.pack.append(PackingBlock(proj))
 
 		def pump_link_blocks(reb_queue):
 			for reb in reb_queue:
